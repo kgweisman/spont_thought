@@ -1,0 +1,368 @@
+---
+title: "Spontaneous Thought (KW first pass)"
+subtitle: "Last updated: 2019-01-13"
+output:
+  html_notebook:
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+always_allow_html: yes
+---
+
+This is Kara's first pass at looking at the Spontaneous Thought data (with data from 2018-11-12; **need to update**).
+
+```{r global_options, include = F}
+knitr::opts_chunk$set(fig.width = 3, fig.asp = 0.67,
+                      include = F, echo = F)
+```
+
+```{r}
+library(tidyverse)
+library(langcog)
+library(psych)
+library(readxl)
+library(cowplot)
+library(lme4)
+library(lmerTest)
+
+theme_set(theme_bw())
+```
+
+```{r}
+d_raw <- read_excel("../Complete and cleaned dataset_Spon Thought_Nov.11.2018.xlsx", sheet = 2)
+```
+
+```{r}
+d0 <- d_raw %>%
+  mutate_at(vars(spon_mary:spon_kim, spon_demo_age, spon_demo_ses, spon_demo_howr), 
+            funs(as.numeric)) %>%
+  mutate(spon_ctry = recode_factor(spon_ctry, "1" = "US", "3" = "Ghana", 
+                                   "2" = "Thailand", "4" = "China", 
+                                   "5" = "Vanuatu"),
+         spon_demo_sex = recode_factor(spon_demo_sex, "1" = "m", "2" = "f"),
+         spon_demo_ubru = recode_factor(spon_demo_ubru, "1" = "urban", "2" = "rural"),
+         spon_demo_affr = recode_factor(spon_demo_affr, "1" = "no", "0" = "yes"),
+         spon_demo_tung = recode_factor(spon_demo_tung, "0" = "no", "1" = "yes")) %>%
+  select(-c(spon_entr:spon_batc, spon_file_version:spon_whoc)) %>%
+  distinct()
+```
+
+```{r}
+d <- d0 %>%
+  select(spon_ctry, spon_subj, spon_mary:spon_kim) %>%
+  distinct() %>%
+  gather(question, response, -c(spon_subj, spon_ctry)) %>%
+  mutate(question = gsub("spon_", "", question),
+         spon_non = case_when(question %in% c("mary", "joe", "jim", 
+                                              "sarah", "matt", "margaret") ~ 
+                                "not spontaneous",
+                              question %in% c("sam", "jane", "mark", 
+                                              "susan", "peter", "kim") ~ 
+                                "spontaneous",
+                              TRUE ~ NA_character_),
+         spon_non = factor(spon_non, levels = c("not spontaneous", "spontaneous")),
+         good_non = case_when(question %in% c("mary", "sam", "jim", 
+                                              "mark", "matt", "peter") ~ 
+                                "good",
+                              question %in% c("joe", "jane", "sarah", 
+                                              "susan", "margaret", "kim") ~ 
+                                "not good",
+                              TRUE ~ NA_character_),
+         good_non = factor(good_non, levels = c("not good", "good")))
+```
+
+```{r}
+d_score <- d %>%
+  group_by(spon_ctry, spon_subj, spon_non, good_non) %>%
+  summarise(score = mean(response, na.rm = T)) %>%
+  ungroup()
+```
+
+# Demographics
+
+```{r}
+d_score %>%
+  distinct(spon_ctry, spon_subj) %>%
+  count(spon_ctry)
+```
+
+```{r, include = T}
+d0 %>%
+  distinct(spon_ctry, spon_subj, spon_demo_sex) %>%
+  group_by(spon_ctry) %>%
+  count(spon_demo_sex) %>%
+  mutate(prop = round(n/sum(n), 2)) %>%
+  ungroup() %>%
+  select(-n) %>%
+  spread(spon_demo_sex, prop)
+```
+
+A couple of things to note here: A substantial majority of participants in Thailand were female, and this was also true (to a lesser extent) in China.
+
+```{r, include = T}
+d0 %>%
+  distinct(spon_ctry, spon_subj, spon_demo_age) %>%
+  group_by(spon_ctry) %>%
+  summarise(median = median(spon_demo_age, na.rm = T),
+            mean = mean(spon_demo_age, na.rm = T),
+            sd = sd(spon_demo_age, na.rm = T),
+            min = min(spon_demo_age, na.rm = T),
+            max = max(spon_demo_age, na.rm = T)) %>%
+  mutate_at(vars(median, mean, sd, min, max), funs(round(., 2)))
+```
+
+<P style="page-break-before: always">
+# Mean scores
+
+```{r}
+mean_plot1 <- d_score %>%
+  group_by(spon_ctry, spon_non, good_non) %>%
+  multi_boot_standard(col = "score", na.rm = T) %>%
+  ungroup() %>%
+  ggplot(aes(x = interaction(good_non, spon_non, sep = ", "), 
+             y = mean, color = spon_ctry)) +
+  facet_grid(cols = vars(spon_ctry)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_jitter(data = d_score,
+              aes(y = score, color = spon_ctry),
+              width = 0.25, height = 0.1,
+              size = 0.4, alpha = 0.2) +
+  geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper), 
+                  color = "black", fatten = 1.2) +
+  scale_color_brewer(palette = "Dark2", guide = "none") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1)) +
+  labs(title = "Spontaneous thought: Individuals", 
+       subtitle = "Error bars are 95% bootstrapped CIs", 
+       x = "Question type", 
+       y = "Score (-2: def. from subject, +2: def. from God*)")
+```
+
+```{r}
+mean_plot2 <- d_score %>%
+  group_by(spon_ctry, spon_non, good_non) %>%
+  multi_boot_standard(col = "score", na.rm = T) %>%
+  ungroup() %>%
+  ggplot(aes(x = interaction(good_non, spon_non, sep = ", "), 
+             y = mean, color = spon_ctry)) +
+  facet_grid(cols = vars(spon_ctry)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper)) +
+  scale_color_brewer(palette = "Dark2", guide = "none") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1)) +
+  labs(title = "Spontaneous thought: Zoomed in", 
+       subtitle = "Error bars are 95% bootstrapped CIs", 
+       x = "Question type", 
+       y = "Score (-2: def. from subject, +2: def. from God*)")
+```
+
+```{r, include = T, fig.width = 4}
+plot_grid(mean_plot1, mean_plot2)
+```
+
+On a first glance, I see a common pattern across sites in the predicted direction: spontaneous thoughts were perceived as more likely to have come from God* than non-spontaneous thoughts. In Vanuatu and maybe Ghana, this was particularly dramatic in the case where these thoguhts were evaluated as positive by the subject; otherwise, the subject's assessment of the thought (good or not good) doesn't seem to have had much of an effect.
+
+Let's look at the stats:
+
+```{r}
+contrasts(d_score$spon_non) <- cbind(spon = c(-1, 1)); contrasts(d_score$spon_non)
+contrasts(d_score$good_non) <- cbind(good = c(-1, 1)); contrasts(d_score$good_non)
+
+r1 <- lmer(score ~ spon_non * good_non + 
+             (spon_non + good_non | spon_ctry/spon_subj),
+           data = d_score)
+```
+
+```{r, include = T, results = "asis"}
+# summary(r1) # too big to print
+summary(r1)$coefficients[] %>%
+  data.frame() %>%
+  select(Estimate, t.value, Pr...t..) %>%
+  rename(`Estimate (b)` = Estimate, t = t.value, p = Pr...t..) %>%
+  rownames_to_column("effect") %>%
+  mutate_at(vars(`Estimate (b)`, t), funs(round(., 2))) %>%
+  mutate(p = round(p, 3),
+         signif = case_when(p < 0.001 ~ "***",
+                            p < 0.01 ~ "**",
+                            p < 0.05 ~ "*",
+                            TRUE ~ "")) %>%
+  knitr::kable()
+```
+
+In the aggregate, this model confirms what I observed in the plots above: 
+
+- Spontaneous thoughts were perceived as more likely to have come from God* than non-spontaneous thoughts (`spon_nonspon`)
+- Thoughts assessed as good were perceived as no more or less likely to have come from God* than thoughts assessed as not good (`good_nongood`)
+
+In addition, it reveals an interaction between the two manipulated variables (spontaneity and assessment):
+
+- The difference between good and not good thoughts was exaggerated for spontaneous thoughts, relative to non-spontaneous thoughts (`spon_nonspon:good_nongood`)
+
+Now let's see if this varied substantially across sites, first comparing everything to the US (with `spon_ctry` dummy-coded with US as the base):
+
+```{r}
+contrasts(d_score$spon_non) <- cbind(spon = c(-1, 1)); contrasts(d_score$spon_non)
+contrasts(d_score$good_non) <- cbind(good = c(-1, 1)); contrasts(d_score$good_non)
+contrasts(d_score$spon_ctry) <- cbind(GH_US = c(0, 1, 0, 0, 0),
+                                      TH_US = c(0, 0, 1, 0, 0),
+                                      CH_US = c(0, 0, 0, 1, 0),
+                                      VT_US = c(0, 0, 0, 0, 1))
+
+r2a <- lmer(score ~ spon_non * good_non * spon_ctry + 
+             (spon_non + good_non | spon_subj),
+           data = d_score)
+```
+
+```{r, include = T, results = "asis"}
+# summary(r2a) # too big to print
+summary(r2a)$coefficients[] %>%
+  data.frame() %>%
+  select(Estimate, t.value, Pr...t..) %>%
+  rename(`Estimate (b)` = Estimate, t = t.value, p = Pr...t..) %>%
+  rownames_to_column("effect") %>%
+  mutate_at(vars(`Estimate (b)`, t), funs(round(., 2))) %>%
+  mutate(p = round(p, 3),
+         signif = case_when(p < 0.001 ~ "***",
+                            p < 0.01 ~ "**",
+                            p < 0.05 ~ "*",
+                            TRUE ~ "")) %>%
+  knitr::kable()
+```
+
+Among US participants, we observed a significant main effect of spontaneity (`spon_nonspon`), no significant main effect of assessment (`good_nongood`) - and in this case no significant interaction (`spon_nonspon:good_nongood`). In addition:
+
+- Relative to US participants, participants in both Ghana (`spon_ctryGH_US`) and Vanuatu (`spon_ctryVT_US`) generally perceived thoughts to be *more* likely to have come from God*, regardless of whether they were spontaneous/non or good/not
+- Relative to US participants, participants in both Thailand (`spon_ctryTH_US`) and China (`spon_ctryCH_US`) generally perceived thoughts to be *less* likely to have come from God*, regardless of whether they were spontaneous/non or good/not
+- Relative to US participants, the difference between spontaneous vs. non-spontaneous thoughts was *exaggerated* among participants in Ghana (`spon_nonspon:spon_ctryGH_US`), China (`spon_nonspon:spon_ctryCH_US`), and Vanuatu (`spon_nonspon:spon_ctryVT_US`), but not Thailand (`spon_nonspon:spon_ctryTH_US`)
+- Relative to US participants, the difference between thoughts assessed as good vs. not good was *exaggerated* among particpiants in Vanuatu (`good_nongood:spon_ctryVT_US`), but not in any other site
+- Relative to US participants, the interaction between spontaneity and assessment was stronger among participants in Ghana (`spon_nonspon:good_nongood:spon_ctryGH_US`) and Vanuatu (`spon_nonspon:good_nongood:spon_ctryVT_US`), but not in Thailand (`spon_nonspon:good_nongood:spon_ctryTH_US`) or China (`spon_nonspon:good_nongood:spon_ctryCH_US`). Looking back at the plot, it looks like, in these two sites, spontaneous thoughts that were assessed as good were perceived as particularly likely to have come from God (while assessment didn't matter for non-spontaneous thoughts).
+
+I'd consider this all very straightforward and interesting!
+
+
+Finally, let's compare sites using our planned contrasts (all sites vs. the US; Ghana and Vanuatu vs. Thailand and China; Ghana vs. Vanuatu; and Thailand vs. China): 
+
+```{r}
+contrasts(d_score$spon_non) <- cbind(spon = c(-1, 1)); contrasts(d_score$spon_non)
+contrasts(d_score$good_non) <- cbind(good = c(-1, 1)); contrasts(d_score$good_non)
+contrasts(d_score$spon_ctry) <- cbind(US_non = c(-4, 1, 1, 1, 1),
+                                      GHVT_THCH = c(0, 1, -1, -1, 1),
+                                      GH_VT = c(0, 1, 0, 0, -1),
+                                      TH_CH = c(0, 0, 1, -1, 0))
+
+r2b <- lmer(score ~ spon_non * good_non * spon_ctry + 
+             (spon_non + good_non | spon_subj),
+           data = d_score)
+```
+
+```{r, include = T, results = "asis"}
+# summary(r2b) # too big to print
+summary(r2b)$coefficients[] %>%
+  data.frame() %>%
+  select(Estimate, t.value, Pr...t..) %>%
+  rename(`Estimate (b)` = Estimate, t = t.value, p = Pr...t..) %>%
+  rownames_to_column("effect") %>%
+  mutate_at(vars(`Estimate (b)`, t), funs(round(., 2))) %>%
+  mutate(p = round(p, 3),
+         signif = case_when(p < 0.001 ~ "***",
+                            p < 0.01 ~ "**",
+                            p < 0.05 ~ "*",
+                            TRUE ~ "")) %>%
+  knitr::kable()
+```
+
+I won't go through this in as much detail, except to say that it confirms previous observations, and:
+
+- Relative to US participants, thoughts were generally perceived as more likely to have come from God* among non-US participants (`spon_ctryUS_non`), with no significant differences in this overall response tendency among non-US sites
+- Relative to US participants, the difference between spontaneous vs. non-spontaneous thoughts was exaggerated among non-US participants (`spon_nonspon:spon_ctryUS_non`), but perhaps less so among particpants in China (at least relative to participants in Thailand: `spon_nonspon:spon_ctryTH_CH`)
+- The difference between thoughts assessed as good vs. bad was especially salient to participants in Vanuatu (at least relative to participants in Ghana: `good_nongood:spon_ctryGH_VT`)
+- The interaction between spontaneity and assessment was exaggerated for non-US participants (`spon_nonspon:good_nongood:spon_ctryUS_non`), and particularly for participants in Ghana and Vanuatu (`spon_nonspon:good_nongood:spon_ctryGHVT_THCH`)
+
+In general, I find this way of looking at this particular dataset more difficult to reason through, but I think it generally conforms to the observations laid out above.
+
+
+<P style="page-break-before: always">
+# Individual questions
+
+```{r}
+mean_plot3 <- d %>%
+  group_by(spon_ctry, spon_non, good_non, question) %>%
+  multi_boot_standard(col = "response", na.rm = T) %>%
+  ungroup() %>%
+  ggplot(aes(x = question, 
+             y = mean, color = spon_ctry)) +
+  facet_grid(rows = vars(spon_ctry), cols = vars(spon_non, good_non),
+             scales = "free", space = "free_x") +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_jitter(data = d,
+              aes(y = response, color = spon_ctry),
+              width = 0.25, height = 0.25,
+              size = 0.4, alpha = 0.2) +
+  geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper), 
+                  color = "black", fatten = 1.2) +
+  scale_color_brewer(palette = "Dark2", guide = "none") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1)) +
+  labs(title = "Spontaneous thought: Individuals", 
+       subtitle = "Error bars are 95% bootstrapped CIs", 
+       x = "Question", y = "Score (-2: def. from subject, +2: def. from God*)")
+```
+
+```{r}
+mean_plot4 <- d %>%
+  group_by(spon_ctry, spon_non, good_non, question) %>%
+  multi_boot_standard(col = "response", na.rm = T) %>%
+  ungroup() %>%
+  ggplot(aes(x = question, 
+             y = mean, color = spon_ctry)) +
+  facet_grid(rows = vars(spon_ctry), cols = vars(spon_non, good_non),
+             scales = "free", space = "free_x") +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper), fatten = 1.5) +
+  scale_color_brewer(palette = "Dark2", guide = "none") +
+  scale_y_continuous(breaks = seq(-2, 2, 1)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1)) +
+  labs(title = "Spontaneous thought: Zoomed in", 
+       subtitle = "Error bars are 95% bootstrapped CIs", 
+       x = "Question", y = "Score (-2: def. from subject, +2: def. from God*)")
+```
+
+```{r, include = T, fig.width = 5, fig.asp = 0.8}
+plot_grid(mean_plot3, mean_plot4)
+```
+
+On a quick glance, it looks like the "Susan" and "Mark" stories were especially compelling as stories about a thought coming from God* (though in Vanuatu, the Susan story wasn't exceptional), whereas the "Sam" story (and perhaps the "Jane") story were rather less compelling (in some sites, indistinguishable from non-spontaneous stories). There are a few other subtler patterns here as well, but I won't dive in any deeper at this point.
+
+
+<P style="page-break-before: always">
+# Scale use
+
+```{r, include = T, fig.width = 4}
+d %>%
+  select(spon_ctry, spon_subj, question, response) %>%
+  mutate(reverse = ifelse(grepl("reverse", question), 
+                          "reversed", "non-reversed")) %>%
+  count(spon_ctry, reverse, response) %>%
+  group_by(spon_ctry, reverse) %>%
+  mutate(prop = n/sum(n)) %>%
+  ungroup() %>%
+  mutate(spon_ctry = factor(spon_ctry,
+                            levels = c("US", "Ghana", "Thailand", 
+                                       "China", "Vanuatu"))) %>%
+  ggplot(aes(x = factor(response), 
+             y = prop, fill = spon_ctry)) +
+  facet_grid(rows = vars(reverse), cols = vars(spon_ctry)) +
+  geom_bar(stat = "identity") +
+  scale_fill_brewer(palette = "Dark2") +
+  scale_x_discrete(labels = c("def. from subject", "prob. from subject",
+                              "equally likely", "prob. from God*", 
+                              "def. from God*", "MISSING")) +
+  scale_y_continuous(labels = scales::percent) +
+  theme_bw() +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+  labs(title = "Spontaneous thought: Scale use", 
+       subtitle = "Reverse-coded responses are *after* reversing (i.e., 'disagree' indicates that participant selected 'agree')",
+       x = "response", y = "percent (by site & reverse-coding)")
+```
+
+Included for completeness. Note that this is a measure where Thai paricipants were *not* at the midpoint!
+
