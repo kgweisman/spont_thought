@@ -80,7 +80,7 @@ d_score <- d %>%
 
 # Demographics
 
-```{r}
+```{r, include = T}
 d_score %>%
   distinct(spon_ctry, spon_subj) %>%
   count(spon_ctry)
