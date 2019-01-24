@@ -1,6 +1,6 @@
 ---
 title: "Spontaneous Thought (KW first pass)"
-subtitle: "Last updated: 2019-01-13"
+subtitle: "Last updated: 2019-01-24"
 output:
   html_notebook:
     toc: yes
@@ -9,7 +9,7 @@ output:
 always_allow_html: yes
 ---
 
-This is Kara's first pass at looking at the Spontaneous Thought data (with data from 2018-11-12; **need to update**).
+This is Kara's first pass at looking at the Spontaneous Thought data (with data from 2019-01-23).
 
 ```{r global_options, include = F}
 knitr::opts_chunk$set(fig.width = 3, fig.asp = 0.67,
@@ -24,12 +24,13 @@ library(readxl)
 library(cowplot)
 library(lme4)
 library(lmerTest)
+library(kableExtra)
 
 theme_set(theme_bw())
 ```
 
 ```{r}
-d_raw <- read_excel("../Complete and cleaned dataset_Spon Thought_Nov.11.2018.xlsx", sheet = 2)
+d_raw <- read_excel("../Complete and cleaned dataset_Spon Thought_Jan.23.2018.xlsx", sheet = 2)
 ```
 
 ```{r}
@@ -185,7 +186,7 @@ summary(r1)$coefficients[] %>%
                             p < 0.01 ~ "**",
                             p < 0.05 ~ "*",
                             TRUE ~ "")) %>%
-  knitr::kable()
+  kable() %>% kable_styling()
 ```
 
 In the aggregate, this model confirms what I observed in the plots above: 
@@ -225,7 +226,7 @@ summary(r2a)$coefficients[] %>%
                             p < 0.01 ~ "**",
                             p < 0.05 ~ "*",
                             TRUE ~ "")) %>%
-  knitr::kable()
+  kable() %>% kable_styling()
 ```
 
 Among US participants, we observed a significant main effect of spontaneity (`spon_nonspon`), no significant main effect of assessment (`good_nongood`) - and in this case no significant interaction (`spon_nonspon:good_nongood`). In addition:
@@ -267,14 +268,14 @@ summary(r2b)$coefficients[] %>%
                             p < 0.01 ~ "**",
                             p < 0.05 ~ "*",
                             TRUE ~ "")) %>%
-  knitr::kable()
+  kable() %>% kable_styling()
 ```
 
 I won't go through this in as much detail, except to say that it confirms previous observations, and:
 
 - Relative to US participants, thoughts were generally perceived as more likely to have come from God* among non-US participants (`spon_ctryUS_non`), with no significant differences in this overall response tendency among non-US sites
-- Relative to US participants, the difference between spontaneous vs. non-spontaneous thoughts was exaggerated among non-US participants (`spon_nonspon:spon_ctryUS_non`), but perhaps less so among particpants in China (at least relative to participants in Thailand: `spon_nonspon:spon_ctryTH_CH`)
-- The difference between thoughts assessed as good vs. bad was especially salient to participants in Vanuatu (at least relative to participants in Ghana: `good_nongood:spon_ctryGH_VT`)
+- Relative to US participants, the difference between spontaneous vs. non-spontaneous thoughts was exaggerated among non-US participants (`spon_nonspon:spon_ctryUS_non`), but perhaps less so among particpants in Thailand (at least relative to participants in China: `spon_nonspon:spon_ctryTH_CH`)
+- The difference between thoughts assessed as good vs. bad was especially salient to participants in Ghana and particularly Vanuatu (`good_nongood:spon_ctryGHVT_THCH`, `good_nongood:spon_ctryGH_VT`)
 - The interaction between spontaneity and assessment was exaggerated for non-US participants (`spon_nonspon:good_nongood:spon_ctryUS_non`), and particularly for participants in Ghana and Vanuatu (`spon_nonspon:good_nongood:spon_ctryGHVT_THCH`)
 
 In general, I find this way of looking at this particular dataset more difficult to reason through, but I think it generally conforms to the observations laid out above.
